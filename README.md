@@ -70,6 +70,7 @@ job-packet/
 ├── requirements.txt           # Core Python dependencies
 ├── STATUS.md                  # Test execution and verification audit
 ├── README.md                  # Privacy, documentation, and user guide
+├── LICENSE                    # MIT License
 ├── docs/
 │   └── ARCHITECTURE.md        # Technical architecture and data contracts
 ├── data/
@@ -78,3 +79,8 @@ job-packet/
 │   └── packets/               # Local timestamped packet storage
 └── .env.example               # Environment variable templates
 ```
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
