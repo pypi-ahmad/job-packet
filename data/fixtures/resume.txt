@@ -1,0 +1,31 @@
+ALEX MERCER
+Remote / Seattle, WA | alex.mercer@fakemail.net | 555-014-9922
+
+SUMMARY
+Distributed Systems & Backend Engineer with 6+ years of experience designing high-throughput data processing pipelines, low-latency gRPC services, and fault-tolerant cloud backends.
+
+PROFESSIONAL EXPERIENCE
+
+Northwind Analytics — Seattle, WA
+Senior Distributed Systems Engineer | March 2021 – Present
+- Built real-time telemetry processing pipelines in Python and Go, handling 350,000 events/sec with sub-5ms latency.
+- Implemented low-latency Redis caching and gRPC messaging middleware, cutting p99 query latency from 180ms to 4ms.
+- Led a team of 4 engineers delivering fault-tolerant failover architectures with 99.99% service uptime.
+- Enforced test-driven development (TDD) and CI/CD pipelines with automated regression testing.
+
+Solstice Cloud Works — Portland, OR
+Software Engineer | June 2018 – February 2021
+- Developed asynchronous Python backend services for distributed task scheduling across hybrid clusters.
+- Optimized PostgreSQL database indexing and connection pooling, reducing API response times by 65%.
+- Designed automated container deployment pipelines using Docker and shell orchestration scripts.
+- Created real-time anomaly detection streaming alerts using NumPy and AsyncIO.
+
+TECHNICAL SKILLS
+- Languages: Python, Go, SQL, Bash
+- Distributed Systems: gRPC, Protocol Buffers, Redis, Kafka, AsyncIO
+- Infrastructure & Storage: PostgreSQL, Linux Systems, Git, Docker, Prometheus
+- Methodologies: Test-Driven Development (TDD), High Availability, Fault Tolerance
+
+EDUCATION
+Bachelor of Science in Computer Science
+River College, 2018

@@ -1,0 +1,25 @@
+Job Posting: Lead Distributed Systems Engineer
+Company: Apex Horizon Technologies
+Location: Remote / Seattle, WA
+Employment Type: Full-time
+
+About Apex Horizon:
+Apex Horizon Technologies builds autonomous telemetry streaming and distributed edge control software for next-generation aerospace and infrastructure platforms.
+
+Role Overview:
+We are seeking a Lead Distributed Systems Engineer to lead the architecture of our real-time telemetry ingestion pipelines and fault-tolerant distributed state middleware.
+
+Must-Have Requirements:
+1. 5+ years of software engineering experience developing distributed backend services in Python.
+2. Proven track record designing real-time telemetry pipelines or high-throughput data streaming systems.
+3. Hands-on expertise with gRPC, Protocol Buffers, and distributed storage/caching (e.g., Redis, Kafka).
+4. Experience leading backend teams, architecture reviews, and engineering standards.
+5. Strong understanding of Linux systems, high availability, and automated failover mechanics.
+
+Nice-to-Have Qualifications:
+1. Production experience with Go or systems languages.
+2. Experience with time-series databases or Prometheus monitoring.
+3. Background in aerospace, robotics, or industrial telemetry.
+
+Benefits:
+Competitive salary, flexible remote policy, comprehensive health benefits.
