@@ -1,133 +1,72 @@
-"""LLM Client configuration for Job Packet supporting Agnes, OpenAI, and Google providers."""
+"""Legacy Agnes client retained for the dictionary-based pipeline.
+
+The active Streamlit application uses :mod:`src.agnes_client` instead. This
+module remains for compatibility with the older ``pipeline.py`` interface.
+"""
 
 import os
 import time
-from typing import Dict, List, Optional
-from dotenv import load_dotenv
+
 import openai
 from openai import OpenAI
 
-# Load .env if present without overriding existing process environment
-load_dotenv()
-
-# Constants
-DEFAULT_AGNES_BASE_URL = "https://apihub.agnes-ai.com/v1"
-DEFAULT_AGNES_MODEL = "agnes-3.0-flash"
-GOOGLE_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+AGNES_BASE_URL = "https://apihub.agnes-ai.com/v1"
+AGNES_MODEL = "agnes-3.0-flash"
 
 
-def get_available_providers() -> Dict[str, Dict[str, object]]:
-    """Detect available providers based on configured environment variables.
-    
-    Returns only providers that have their required API keys present.
-    Never exposes or returns the actual keys.
+def is_agnes_configured() -> bool:
+    """Return whether the legacy client can read the Agnes credential.
+
+    Returns:
+        True when ``AGNESAI_API_KEY`` is non-blank in the process environment.
     """
-    providers: Dict[str, Dict[str, object]] = {}
-
-    # Agnes AI (Primary default)
-    agnes_key = os.getenv("AGNESAI_API_KEY")
-    # Always include Agnes as default option; if key missing, UI can warn
-    providers["Agnes AI"] = {
-        "configured": bool(agnes_key and agnes_key.strip()),
-        "base_url": os.getenv("AGNESAI_BASE_URL", DEFAULT_AGNES_BASE_URL),
-        "models": [DEFAULT_AGNES_MODEL],
-        "default_model": DEFAULT_AGNES_MODEL,
-        "env_var": "AGNESAI_API_KEY",
-    }
-
-    # OpenAI (Optional extra provider)
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key and openai_key.strip():
-        providers["OpenAI"] = {
-            "configured": True,
-            "base_url": os.getenv("OPENAI_BASE_URL"),
-            "models": ["gpt-5.6-luna", "gpt-5.6-terra"],
-            "default_model": "gpt-5.6-luna",
-            "env_var": "OPENAI_API_KEY",
-        }
-
-    # Google Gemini (Optional extra provider via OpenAI-compatible endpoint)
-    google_key = os.getenv("GOOGLE_API_KEY")
-    if google_key and google_key.strip():
-        providers["Google Gemini"] = {
-            "configured": True,
-            "base_url": GOOGLE_OPENAI_BASE_URL,
-            "models": ["gemini-3.5-flash-lite", "gemini-3.7-flash"],
-            "default_model": "gemini-3.5-flash-lite",
-            "env_var": "GOOGLE_API_KEY",
-        }
-
-    return providers
+    return bool(os.environ.get("AGNESAI_API_KEY", "").strip())
 
 
-def create_llm_client(provider_name: str = "Agnes AI") -> OpenAI:
-    """Instantiate official OpenAI SDK client for selected provider.
-    
-    Raises ValueError with missing variable name if required key is unset.
-    Never prints or logs the key value.
+def create_llm_client() -> OpenAI:
+    """Create the legacy official OpenAI-compatible Agnes client.
+
+    Returns:
+        Configured SDK client pointed at the Agnes base URL.
+
+    Raises:
+        ValueError: If ``AGNESAI_API_KEY`` is unavailable.
+
+    Note:
+        New code should call ``src.agnes_client.chat_completion``.
     """
-    providers = get_available_providers()
-    if provider_name not in providers:
-        raise ValueError(f"Provider '{provider_name}' is not recognized or available.")
-
-    provider_info = providers[provider_name]
-    env_var_name = str(provider_info["env_var"])
-    api_key = os.getenv(env_var_name)
-
-    if not api_key or not api_key.strip():
-        raise ValueError(f"Required environment variable '{env_var_name}' is missing.")
-
-    base_url = provider_info.get("base_url")
-
-    if base_url:
-        return OpenAI(api_key=api_key, base_url=str(base_url))
-    return OpenAI(api_key=api_key)
+    api_key = os.environ.get("AGNESAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Required environment variable AGNESAI_API_KEY is unavailable.")
+    return OpenAI(api_key=api_key, base_url=AGNES_BASE_URL, timeout=30.0, max_retries=0)
 
 
 def get_chat_completion(
-    messages: List[Dict[str, str]],
-    provider_name: str = "Agnes AI",
-    model: Optional[str] = None,
-    temperature: float = 0.3,
-    max_tokens: Optional[int] = None,
-    max_retries: int = 5,
+    messages: list[dict[str, str]], *, temperature: float = 0.2, max_retries: int = 3
 ) -> str:
-    """Generate chat completion via official OpenAI client with rate-limit retry."""
-    providers = get_available_providers()
-    provider_info = providers.get(provider_name)
-    if not provider_info:
-        raise ValueError(f"Provider '{provider_name}' not available.")
+    """Run a legacy Agnes chat completion with bounded rate-limit retries.
 
-    selected_model = model or str(provider_info["default_model"])
-    client = create_llm_client(provider_name)
+    Args:
+        messages: OpenAI-compatible system and user messages.
+        temperature: Sampling temperature for this legacy call.
+        max_retries: Total attempts after HTTP 429 responses.
 
-    kwargs = {
-        "model": selected_model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if max_tokens is not None:
-        kwargs["max_tokens"] = max_tokens
+    Returns:
+        Completion text, or an empty string when the SDK response has no text.
 
-    last_error: Optional[Exception] = None
+    Raises:
+        RateLimitError: If every configured attempt is rate-limited.
+        RuntimeError: If no completion is returned.
+    """
+    client = create_llm_client()
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(**kwargs)
-            # Modest courtesy pause to avoid burst rate limits on free accounts
-            time.sleep(1.0)
+            response = client.chat.completions.create(
+                model=AGNES_MODEL, messages=messages, temperature=temperature
+            )
             return response.choices[0].message.content or ""
-        except openai.RateLimitError as e:
-            last_error = e
-            wait_seconds = (attempt + 1) * 4
-            time.sleep(wait_seconds)
-        except Exception as e:
-            if "rate limit" in str(e).lower() or "429" in str(e):
-                last_error = e
-                wait_seconds = (attempt + 1) * 4
-                time.sleep(wait_seconds)
-            else:
-                raise e
-
-    if last_error:
-        raise last_error
-    return ""
+        except openai.RateLimitError:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise RuntimeError("Agnes request did not return a response.")

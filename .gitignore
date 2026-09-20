@@ -1,9 +1,4 @@
 .env
-.venv/
-data/packets/
-data/cache/
-__pycache__/
-*.pyc
-.streamlit/secrets.toml
-.codegraph/
-.code-review-graph/
+.venv
+data/
+__pycache__

@@ -1,86 +1,75 @@
-# Job Packet
+# Job Packet Generator
 
-Job Packet is a Windows 11 desktop app that creates tailored job application materials and interview practice from a resume and a job description.
+A Windows-native Streamlit app that turns a resume and job description into a
+grounded application packet with Agnes `agnes-3.0-flash`.
 
-## Privacy and data storage
+## Privacy
 
-Job Packet runs entirely on your local machine:
+Resume and job-description content goes only to:
 
-- Everything runs directly on Windows 11. It does not use containers, virtual machines, or remote servers.
-- The app does not connect to job boards, tracking scripts, or analytics services.
-- Resumes, job descriptions, match tables, cover notes, and interview questions stay in `data/packets/<timestamp>/` on your drive.
-- The app reads credentials from Windows user or machine environment variables (`AGNESAI_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or a local `.env` file ignored by Git. It never logs keys, saves them to disk, or displays them in the interface.
-- Output stays tied to facts in the resume. The generator does not invent past employers or jobs.
+- Agnes at `https://apihub.agnes-ai.com/v1` for parsing and generation.
+- The local Windows disk for fixtures, caches, and generated packets.
 
-## Quick start
+The app does not use job-board APIs or other model services. Uploaded PDFs are
+processed locally with `pdf-inspector`; OCR is not performed. Generated packets
+are saved below `data/packets/`, and `data/` is excluded from Git.
 
-### Launch with run.cmd
+## Configure Agnes
 
-Double-click `run.cmd` in the repository root. The script will:
-
-1. Check for `.env`. If the file is missing, it copies `.env.example` to `.env` and opens Notepad so you can add your keys.
-2. Create a virtual environment (`.venv`) with `py -3` if one does not exist.
-3. Install dependencies from `requirements.txt`.
-4. Open the Streamlit interface in your browser.
-
-### Launch from the terminal
-
-You can also run the app from PowerShell:
+Create the Windows user environment variable without putting the key in a
+project file:
 
 ```powershell
-.\.venv\Scripts\activate.bat
-streamlit run app.py
+setx AGNESAI_API_KEY "your-key"
 ```
 
-## How it works
+Open a new terminal after running `setx`. The app reports only whether the
+variable is present and never displays its value.
 
-The interface has four tabs:
+## Run on Windows 11
 
-- **Resume:** Upload a PDF, text, or Markdown resume, or paste the text directly.
-- **Job description:** Upload or paste the job posting.
-- **Packet:** Runs the seven-step pipeline:
-  1. Extracts bullets, skills, roles, and dates into JSON.
-  2. Extracts must-have and nice-to-have requirements, company name, and job title into JSON.
-  3. Builds a match table pairing each must-have requirement with resume evidence or marking it missing.
-  4. Rewrites 6 to 10 accomplishment bullets using only verified resume details.
-  5. Writes a cover note between 250 and 400 words.
-  6. Creates 8 interview questions with model answers tied to resume facts.
-  7. Builds a one-page summary in Markdown.
-  8. Checks all output for unverified employer and school names, displaying live warnings in the interface.
-  All files are saved to `data/packets/<timestamp>/` and mirrored to `data/cache/last_packet.json`.
-- **Interview:** Displays the 8 interview questions by category, with answers and resume references you can expand during prep.
+Double-click `run.cmd`, or run it from Command Prompt:
 
-## Models and providers
-
-- **Agnes AI (default):** Uses `agnes-3.0-flash` at `https://apihub.agnes-ai.com/v1`. Requires the `AGNESAI_API_KEY` environment variable.
-- **OpenAI (optional):** Supports `gpt-5.6-luna` and `gpt-5.6-terra`. Requires `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
-- **Google Gemini (optional):** Supports `gemini-3.5-flash-lite` and `gemini-3.7-flash` through its OpenAI-compatible endpoint. Requires `GOOGLE_API_KEY`.
-
-If an environment variable is missing, that provider is omitted from the sidebar.
-
-## Project layout
-
-```
-job-packet/
-├── app.py                     # Streamlit frontend application
-├── document_utils.py          # PDF/text extraction & packet storage
-├── llm_client.py              # Multi-provider client abstraction via OpenAI SDK
-├── pipeline.py                # Grounding & anti-hallucination pipeline
-├── run.cmd                    # Root Windows double-clickable launcher
-├── requirements.txt           # Core Python dependencies
-├── STATUS.md                  # Test execution and verification audit
-├── README.md                  # Privacy, documentation, and user guide
-├── LICENSE                    # MIT License
-├── docs/
-│   └── ARCHITECTURE.md        # Technical architecture and data contracts
-├── data/
-│   ├── cache/                 # Mirrored last packet
-│   ├── fixtures/              # Personas and test datasets
-│   └── packets/               # Local timestamped packet storage
-└── .env.example               # Environment variable templates
+```bat
+run.cmd
 ```
 
-## License
+On first use, `run.cmd` creates `.env` from `.env.example`, opens it in Notepad,
+and exits. Run `run.cmd` again to create `.venv`, install `requirements.txt`, and
+start Streamlit at `http://localhost:8595`. Before launch, it stops the process
+currently listening on port 8595. The Agnes key is still read from the Windows
+user environment.
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+## Reviewer leak test
 
+The synthetic fixtures are:
+
+- `data/fixtures/resume.txt`
+- `data/fixtures/jd.txt`
+
+With `AGNESAI_API_KEY` available, run:
+
+```bat
+.venv\Scripts\python scripts\smoke_parse.py
+.venv\Scripts\python scripts\smoke_packet.py
+```
+
+The packet smoke checks that `Google`, `Stanford`, and `PhD` were not introduced
+and that the target company, Harbor Labs, was not claimed as Alex Rivera's past
+employer. Results are written below `data/cache/` and `data/packets/`.
+
+## Grounding rule
+
+Invented employers, schools, dates, degrees, skills, metrics, or work history are
+bugs. Tailoring may change emphasis, but it must not create candidate facts.
+See [Grounding](docs/GROUNDING.md) for the deterministic checks and known limits.
+
+## Documentation
+
+- [Zero to mastery tutorial](docs/ZERO_TO_MASTERY.md): first successful packet.
+- [Developer guide](docs/DEVELOPER_GUIDE.md): local setup, debugging, and test tiers.
+- [Contributor runbook](CONTRIBUTING.md): safe changes and review checklist.
+- [Python reference](docs/PYTHON_REFERENCE.md): models and module APIs.
+- [Architecture](docs/ARCHITECTURE.md): runtime boundaries and data flow.
+- [Grounding and leak checks](docs/GROUNDING.md): evidence contracts and limits.
+- [Current verification status](STATUS.md): latest cache and smoke evidence.

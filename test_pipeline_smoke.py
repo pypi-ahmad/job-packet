@@ -33,6 +33,11 @@ COMMON_EXTERNAL_COMPANIES = [
 
 
 def run_pipeline_smoke():
+    """Exercise the historical dictionary pipeline against old assumptions.
+
+    This script is retained for compatibility and is not the supported smoke
+    suite for the active fixtures or Streamlit workflow.
+    """
     print("=" * 60)
     print("RUNNING JOB PACKET PIPELINE SMOKE TEST")
     print("=" * 60)

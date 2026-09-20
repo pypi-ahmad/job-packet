@@ -1,4 +1,4 @@
-"""Job Packet Processing Pipeline.
+"""Legacy dictionary-based job-packet pipeline.
 
 Orchestrates:
 1. Parse resume to JSON {bullets, skills, roles, dates} via Agnes
@@ -8,6 +8,10 @@ Orchestrates:
 5. Cover note 250-400 words
 6. Eight interview questions with answers grounded in resume JSON
 7. Optional one-page summary markdown
+
+The active Streamlit application uses the typed modules in ``src/``. This file
+is retained for compatibility with historical scripts and is not an extension
+point for new product behavior.
 """
 
 import json
@@ -17,7 +21,18 @@ from llm_client import get_chat_completion
 
 
 def clean_json_response(raw_text: str) -> Any:
-    """Extract and parse JSON from an LLM response string."""
+    """Extract JSON from a legacy LLM response.
+
+    Args:
+        raw_text: Completion text that may contain code fences or surrounding
+            prose.
+
+    Returns:
+        Decoded JSON object or array.
+
+    Raises:
+        json.JSONDecodeError: If no valid JSON remains after cleanup.
+    """
     cleaned = raw_text.strip()
     # Remove markdown code fences if present
     if cleaned.startswith("```"):
@@ -45,7 +60,17 @@ def clean_json_response(raw_text: str) -> Any:
 
 
 def extract_employers_from_resume_text(resume_text: str) -> Set[str]:
-    """Identify candidate employers directly from resume text using heuristics and known headers."""
+    """Identify employer-like resume lines with legacy heuristics.
+
+    Args:
+        resume_text: Raw resume text to inspect line by line.
+
+    Returns:
+        Candidate employer strings inferred from legacy formatting patterns.
+
+    Note:
+        The active parser uses Agnes plus verbatim role validation instead.
+    """
     employers: Set[str] = set()
     lines = resume_text.splitlines()
     title_keywords = [
@@ -68,7 +93,14 @@ def extract_employers_from_resume_text(resume_text: str) -> Set[str]:
 
 
 def extract_schools_from_resume_text(resume_text: str) -> Set[str]:
-    """Identify education institutions and schools directly from raw resume text."""
+    """Identify school-like strings with legacy keyword heuristics.
+
+    Args:
+        resume_text: Raw resume text to inspect.
+
+    Returns:
+        Candidate school strings with simple degree/date cleanup applied.
+    """
     schools: Set[str] = set()
     school_keywords = ["University", "College", "Institute", "Academy", "Polytechnic", "School"]
     for line in resume_text.splitlines():
@@ -90,7 +122,21 @@ def parse_resume_to_json(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Parse resume text into JSON {bullets, skills, roles, dates}."""
+    """Parse a resume into the legacy dictionary schema through Agnes.
+
+    Args:
+        resume_text: Raw resume text to send to the legacy prompt.
+        provider_name: Retained compatibility parameter; it does not switch the
+            configured Agnes client.
+        model: Retained compatibility parameter; it is not used.
+
+    Returns:
+        A dictionary with ``bullets``, ``skills``, ``roles``, ``dates``, and
+        inferred ``employers`` keys.
+
+    Note:
+        Use ``src.parse.parse_resume`` for new code.
+    """
     system_prompt = (
         "You are an expert resume parser. Extract structured details from the provided resume text. "
         "Return ONLY a valid JSON object with EXACTLY these four keys:\n"
@@ -107,7 +153,7 @@ def parse_resume_to_json(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.1)
+    raw_resp = get_chat_completion(messages, temperature=0.1)
     parsed = clean_json_response(raw_resp)
 
     # Ensure required keys exist
@@ -128,7 +174,20 @@ def parse_jd_to_json(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Parse job description text into JSON {must, nice, company, role}."""
+    """Parse a job description into the legacy dictionary schema.
+
+    Args:
+        jd_text: Raw job-description text to send to the legacy prompt.
+        provider_name: Retained compatibility parameter; it does not switch the
+            configured Agnes client.
+        model: Retained compatibility parameter; it is not used.
+
+    Returns:
+        A dictionary with ``must``, ``nice``, ``company``, and ``role`` keys.
+
+    Note:
+        Use ``src.parse.parse_job_description`` for new code.
+    """
     system_prompt = (
         "You are an expert job description analyzer. Extract key requirements from the provided job description text. "
         "Return ONLY a valid JSON object with EXACTLY these four keys:\n"
@@ -144,7 +203,7 @@ def parse_jd_to_json(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.1)
+    raw_resp = get_chat_completion(messages, temperature=0.1)
     parsed = clean_json_response(raw_resp)
 
     # Validate keys
@@ -163,7 +222,20 @@ def build_match_matrix(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> List[Dict[str, str]]:
-    """Evaluate each JD must-have against resume evidence, returning match or 'missing'."""
+    """Evaluate legacy must-have requirements through Agnes.
+
+    Args:
+        must_requirements: Requirement strings from the legacy JD dictionary.
+        resume_json: Legacy parsed resume dictionary.
+        provider_name: Retained compatibility parameter.
+        model: Retained compatibility parameter.
+
+    Returns:
+        Legacy requirement, status, and evidence mappings.
+
+    Note:
+        Use local ``src.match.build_match_matrix`` for new code.
+    """
     system_prompt = (
         "You are an objective technical recruiter. Compare the candidate's resume evidence against each must-have requirement.\n"
         "For EACH requirement in the list, evaluate if the resume contains evidence.\n"
@@ -187,7 +259,7 @@ def build_match_matrix(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.1)
+    raw_resp = get_chat_completion(messages, temperature=0.1)
     matrix = clean_json_response(raw_resp)
     if not isinstance(matrix, list):
         matrix = []
@@ -201,7 +273,21 @@ def rewrite_targeted_bullets(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> List[str]:
-    """Rewrite 6-10 bullets tailored to JD using ONLY resume evidence. Reject invented employers."""
+    """Rewrite 6-10 legacy-format bullets using legacy Agnes prompts.
+
+    Args:
+        resume_json: Legacy parsed resume dictionary.
+        jd_json: Legacy parsed job-description dictionary.
+        allowed_employers: Employer strings admitted by the legacy prompt.
+        provider_name: Retained compatibility parameter.
+        model: Retained compatibility parameter.
+
+    Returns:
+        At most ten non-empty bullet strings.
+
+    Note:
+        Use ``src.generate.generate_packet`` for new evidence-tagged bullets.
+    """
     employers_str = ", ".join(f"'{e}'" for e in allowed_employers) if allowed_employers else "None specified"
     system_prompt = (
         "You are an executive resume writer. Your task is to rewrite 6 to 10 high-impact achievement bullets "
@@ -212,6 +298,7 @@ def rewrite_targeted_bullets(
         f"3. ALLOWED EMPLOYERS: {employers_str}. "
         "DO NOT invent, assume, or cite any employer, client, or company name outside this allowed list. "
         "Never attribute candidate work to any other company or to the target hiring company.\n"
+        "Do not name the target employer, any school, or any other organization unless its exact name appears in the resume evidence.\n"
         "4. If mentioning where the work occurred, use only names from the allowed list or refer to the domain/project directly.\n"
         "5. Preserve verified numbers, scale, and technologies (e.g. 450,000 events/sec, sub-5ms latency, DO-178C).\n"
         "Return ONLY a JSON list of strings."
@@ -230,7 +317,7 @@ def rewrite_targeted_bullets(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.2)
+    raw_resp = get_chat_completion(messages, temperature=0.2)
     bullets = clean_json_response(raw_resp)
     if not isinstance(bullets, list):
         bullets = [str(bullets)]
@@ -247,7 +334,22 @@ def generate_cover_note(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> str:
-    """Generate professional cover note strictly 250-400 words using only resume evidence."""
+    """Generate a legacy-format cover note with an optional correction pass.
+
+    Args:
+        resume_json: Legacy parsed resume dictionary.
+        jd_json: Legacy parsed job-description dictionary.
+        allowed_employers: Employer strings admitted by the legacy prompt.
+        provider_name: Retained compatibility parameter.
+        model: Retained compatibility parameter.
+
+    Returns:
+        Generated plain-text cover note.
+
+    Note:
+        The active generator enforces exact evidence spans and a 250-400-word
+        validation range after generation.
+    """
     employers_str = ", ".join(f"'{e}'" for e in allowed_employers) if allowed_employers else "prior roles"
     system_prompt = (
         "You are an executive talent strategist. Write a tailored, professional cover note for the candidate "
@@ -257,6 +359,7 @@ def generate_cover_note(
         "2. GROUNDING: Use ONLY verifiable experiences, technologies, and achievements from the candidate's resume.\n"
         f"3. EMPLOYER INTEGRITY: Allowed past employers are ONLY: {employers_str}. "
         "Never invent or mention any other past employer, client, or company.\n"
+        "Do not name the target employer, any school, or any other organization unless its exact name appears in the resume evidence.\n"
         "4. Structure: Opening articulating value proposition for this role, 2 focused body paragraphs connecting "
         "proven accomplishments to the must-have requirements, and a strong closing statement.\n"
         "5. Output clean plain text without markdown headings or placeholder brackets."
@@ -275,7 +378,7 @@ def generate_cover_note(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.3)
+    raw_resp = get_chat_completion(messages, temperature=0.3)
     text = raw_resp.strip()
 
     # Check word count
@@ -290,7 +393,7 @@ def generate_cover_note(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": correction_prompt},
         ]
-        text = get_chat_completion(corr_messages, provider_name=provider_name, model=model, temperature=0.2).strip()
+        text = get_chat_completion(corr_messages, temperature=0.2).strip()
 
     return text
 
@@ -301,7 +404,20 @@ def generate_interview_questions(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Generate exactly 8 interview questions with answers grounded in resume JSON."""
+    """Generate up to eight legacy interview question dictionaries.
+
+    Args:
+        resume_json: Legacy parsed resume dictionary.
+        jd_json: Legacy parsed job-description dictionary.
+        provider_name: Retained compatibility parameter.
+        model: Retained compatibility parameter.
+
+    Returns:
+        Legacy question dictionaries with prompts, answers, and evidence text.
+
+    Note:
+        Use ``src.generate.generate_packet`` for new validated interview items.
+    """
     system_prompt = (
         "You are a technical hiring manager preparing an interview candidate profile.\n"
         "Generate EXACTLY EIGHT (8) interview questions tailored to the target role requirements and the candidate's experience.\n"
@@ -312,7 +428,8 @@ def generate_interview_questions(
         "- 'question': clear, probing interview question.\n"
         "- 'grounded_answer': detailed response structured using candidate's actual projects, metrics, and technologies.\n"
         "- 'resume_evidence': the specific bullet point or skill from the resume justifying this answer.\n"
-        "CRITICAL: Ground every answer in resume facts. Do not invent ungrounded accomplishments."
+        "CRITICAL: Ground every answer in resume facts. Do not invent ungrounded accomplishments. "
+        "Do not name an employer, school, client, or other organization unless its exact name appears in the resume evidence."
     )
     user_payload = {
         "target_role": jd_json.get("role", ""),
@@ -328,7 +445,7 @@ def generate_interview_questions(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    raw_resp = get_chat_completion(messages, provider_name=provider_name, model=model, temperature=0.2)
+    raw_resp = get_chat_completion(messages, temperature=0.2)
     questions = clean_json_response(raw_resp)
     if not isinstance(questions, list):
         questions = []
@@ -341,7 +458,17 @@ def generate_one_page_summary(
     match_matrix: List[Dict[str, str]],
     bullets: List[str],
 ) -> str:
-    """Generate executive one-page summary in Markdown (no external image API required)."""
+    """Render a legacy one-page Markdown summary locally.
+
+    Args:
+        resume_json: Legacy parsed resume dictionary.
+        jd_json: Legacy parsed job-description dictionary.
+        match_matrix: Legacy requirement status mappings.
+        bullets: Legacy rewritten bullet strings.
+
+    Returns:
+        Markdown summary assembled without another model call.
+    """
     matched_count = sum(1 for m in match_matrix if m.get("status") == "matched")
     total_count = len(match_matrix)
     match_rate = f"{(matched_count / total_count * 100):.0f}%" if total_count > 0 else "N/A"
@@ -388,17 +515,23 @@ def scan_output_for_unverified_entities(
     raw_resume_text: str,
     target_company: str = "",
 ) -> Dict[str, Any]:
-    """Scan all generated outputs for employer or school strings not present in raw resume text."""
+    """Scan legacy generated content for ungrounded schools or employers.
+
+    Args:
+        generated_data: Legacy pipeline output fields to scan.
+        raw_resume_text: Original resume text used as evidence.
+        target_company: Retained compatibility argument; currently unused.
+
+    Returns:
+        Audit result with pass status, flagged entities, and heuristic entities.
+
+    Note:
+        New code should use ``src.leakcheck.check_generated_text``.
+    """
     allowed_employers = extract_employers_from_resume_text(raw_resume_text)
     allowed_schools = extract_schools_from_resume_text(raw_resume_text)
 
-    parsed_employers = generated_data.get("allowed_employers", [])
-    for emp in parsed_employers:
-        if isinstance(emp, str) and emp.strip():
-            allowed_employers.add(emp.strip())
-
     resume_lower = raw_resume_text.lower()
-    target_company_lower = target_company.lower().strip()
 
     artifacts_to_scan = []
 
@@ -415,10 +548,6 @@ def scan_output_for_unverified_entities(
         qid = q.get("id", "Q")
         ans = q.get("grounded_answer", "")
         artifacts_to_scan.append((f"Interview answer #{qid}", ans))
-
-    summary = generated_data.get("one_page_summary", "")
-    if summary:
-        artifacts_to_scan.append(("One-page summary", summary))
 
     school_patterns = [
         r"\b(?:[A-Z][a-zA-Z0-9&.'-]*\s+)+(?:University|College|Institute|Academy|Polytechnic|School)\b",
@@ -472,7 +601,7 @@ def scan_output_for_unverified_entities(
         for emp in known_tech_employers:
             pattern = r"\b" + re.escape(emp) + r"\b"
             for match in re.finditer(pattern, text, re.IGNORECASE):
-                if emp.lower() in resume_lower or (target_company_lower and emp.lower() in target_company_lower):
+                if emp.lower() in resume_lower:
                     continue
                 key = (emp.lower(), artifact_name)
                 if key not in seen_flagged:
@@ -493,8 +622,6 @@ def scan_output_for_unverified_entities(
                 cleaned = re.sub(r"^(?:at|in|for|from|to|with|by|the)\s+", "", candidate, flags=re.IGNORECASE).strip()
                 cleaned = cleaned.strip(".,;:\"'()[]{}")
                 if not cleaned or cleaned.lower() in tech_false_positives:
-                    continue
-                if target_company_lower and (cleaned.lower() in target_company_lower or target_company_lower in cleaned.lower()):
                     continue
                 if cleaned.lower() not in resume_lower:
                     key = (cleaned.lower(), artifact_name)
@@ -524,7 +651,20 @@ def run_full_pipeline(
     provider_name: str = "Agnes AI",
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute complete 7-step job packet pipeline."""
+    """Execute the complete legacy dictionary-based packet pipeline.
+
+    Args:
+        resume_text: Raw resume text.
+        jd_text: Raw job-description text.
+        provider_name: Retained compatibility parameter.
+        model: Retained compatibility parameter.
+
+    Returns:
+        Legacy parsed data, generated text, local summary, and audit results.
+
+    Note:
+        The active Streamlit flow composes typed functions from ``src/``.
+    """
     # Step 1: Parse resume
     resume_json = parse_resume_to_json(resume_text, provider_name=provider_name, model=model)
 
