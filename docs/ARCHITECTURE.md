@@ -1,141 +1,79 @@
 # Architecture
 
-Architecture and data flow for the Job Packet desktop application.
+## Runtime boundary
 
-## System overview
+Job Packet Generator is a native Windows 11 Streamlit application. It runs from
+the repository virtual environment created by `run.cmd`. It does not require
+WSL, Docker, a vector database, or a job-board API.
 
-Job Packet processes resumes and job descriptions locally to produce application materials and interview preparation notes.
+The only external service is Agnes. The official OpenAI Python SDK connects to
+`https://apihub.agnes-ai.com/v1` with model `agnes-3.0-flash`, temperature `0`,
+and the `AGNESAI_API_KEY` Windows environment variable.
 
-```mermaid
-flowchart TD
-    subgraph Inputs
-        A[Candidate Resume\nPDF / TXT / MD]
-        B[Job Description\nTXT / MD]
-    end
+## Pipeline
 
-    subgraph LLMClient["LLM Multi-Provider Engine"]
-        C[Agnes AI\nDefault: agnes-3.0-flash]
-        D[Optional: OpenAI\ngpt-5.6-luna / terra]
-        E[Optional: Google Gemini\ngemini-3.5-flash-lite / 3.7-flash]
-    end
+The **Run all** action executes these stages in order:
 
-    subgraph Pipeline["7-Step Grounding Pipeline"]
-        P1["1. Parse Resume JSON\nbullets, skills, roles, dates"]
-        P2["2. Parse JD JSON\nmust, nice, company, role"]
-        P3["3. Requirements Match Matrix\nmust-have to evidence or missing"]
-        P4["4. Rewritten Impact Bullets\n6-10 bullets, zero invented employers"]
-        P5["5. Tailored Cover Note\n250-400 words"]
-        P6["6. Grounded Interview Q&A\n8 questions with resume citations"]
-        P7["7. Executive Brief Markdown\nOne-page summary"]
-    end
+1. Parse the resume and job description through Agnes into validated Pydantic
+   models.
+2. Build the match matrix locally with deterministic Python matching.
+3. Ask Agnes to generate tailored bullets, a cover note, and eight interview
+   question-and-answer pairs.
+4. Run the local post-generation leakcheck.
+5. Save JSON and Markdown artifacts under `data/packets/<timestamp>/`.
 
-    subgraph Storage["Local Windows Filesystem"]
-        S1["data/packets/<timestamp>/\nresume.txt\njob_description.txt\nmatch_matrix.json\nrewritten_bullets.json\ncover_note.txt\ninterview_qa.json\nsummary.md\npacket_manifest.json"]
-    end
+The Streamlit UI then renders the packet, displays leakcheck flags, and offers a
+ZIP containing all saved artifacts.
 
-    subgraph UI["Streamlit Frontend (app.py)"]
-        T1["Tab 1: Resume"]
-        T2["Tab 2: Job Description"]
-        T3["Tab 3: Packet"]
-        T4["Tab 4: Interview"]
-    end
+## Components
 
-    A --> T1
-    B --> T2
-    T1 & T2 --> Pipeline
-    Pipeline <--> LLMClient
-    Pipeline --> Storage
-    Storage --> T3 & T4
-```
+| Component | Responsibility |
+|---|---|
+| `app.py` | Streamlit pages, session state, full-pipeline action, rendering, and ZIP download |
+| `document_utils.py` | Local PDF-to-Markdown extraction through `pdf_inspector.process_pdf` |
+| `src/config.py` | Fixed model configuration and secret-presence health check |
+| `src/agnes_client.py` | Official OpenAI SDK client and bounded HTTP 429 retries |
+| `src/parse.py` | Pydantic schemas, hardened first-JSON parser, and resume-role grounding |
+| `src/match.py` | Deterministic requirement-to-resume evidence matching |
+| `src/generate.py` | Grounded generation, evidence validation, rendering, and packet persistence |
+| `src/leakcheck.py` | Local suspicious proper-noun and forbidden-string scan |
+| `scripts/smoke_parse.py` | Live parse and match fixture smoke test |
+| `scripts/smoke_packet.py` | Live end-to-end generation and leak test |
+| `scripts/smoke_import.py` | Import and module-path smoke test |
 
-## Pipeline stages
+## Data flow and storage
 
-### 1. Resume parsing
-The parser accepts text from uploaded PDF files (extracted with `pypdf`), text files, or Markdown documents. It calls the language model to extract a JSON object with four primary keys: `bullets`, `skills`, `roles`, and `dates`.
+Pasted text or locally extracted PDF Markdown is held in Streamlit session state.
+The resume and job description are sent to Agnes for structured parsing. The
+validated JSON and deterministic match matrix are then sent to Agnes for packet
+generation.
 
-```json
-{
-  "bullets": ["Processed 450,000 sensor events/sec...", "..."],
-  "skills": ["Python", "gRPC", "Redis", "..."],
-  "roles": ["Senior Flight Systems Engineer at Zephyr Skyworks", "..."],
-  "dates": ["March 2022 to Present", "June 2019 to February 2022"],
-  "employers": ["Zephyr Skyworks", "Nebula Cloud Foundry"]
-}
-```
+Generated artifacts are saved locally as:
 
-The parser also records the candidate's employers. Downstream steps use this list to check that the generator does not invent new employer names.
+- `resume.json`
+- `jd.json`
+- `match.json`
+- `bullets.md`
+- `cover.md`
+- `interview.md`
+- `packet.md`
 
-### 2. Job description parsing
-The job description parser converts the job posting into structured JSON:
+Local caches and packets live below `data/`, which is ignored by Git.
 
-```json
-{
-  "must": ["5+ years distributed Python backend", "Real-time telemetry pipelines", "..."],
-  "nice": ["DO-178C aerospace standards", "Rust", "..."],
-  "company": "Starlight Propulsion Inc.",
-  "role": "Principal Autonomous Systems Architect"
-}
-```
+## PDF behavior
 
-### 3. Requirements match matrix
-The pipeline matches each requirement from the `must` list against the candidate's resume facts. Each item is marked `matched`, `partial`, or `missing`. If the resume does not show direct evidence for a requirement, the status and evidence fields are set to `missing`.
+PDF input is optional. `pdf_inspector.process_pdf` extracts Markdown locally and
+places it in the resume text area. If extraction returns no Markdown, the UI
+asks the user to paste text instead. OCR is outside this version's scope.
 
-### 4. Rewritten bullets
-The generator produces 6 to 10 bullet points tailored to the target role. The prompt includes the candidate's verified employers and instructs the model not to add companies or clients outside that list. A post-generation check scans the text for company names and flags any employer not in the source resume.
+## Active and legacy code paths
 
-### 5. Tailored cover note
-The model writes a cover note addressed to the hiring team between 250 and 400 words. The text draws only from verified projects, tools, and employers in the resume. If the initial draft falls outside the 250 to 400 word range, the pipeline runs a revision pass to fit the target length.
+The active application imports `src/` for parsing, matching, generation, and
+leak checking. `document_utils.extract_text_from_upload` is the only helper from
+the repository root used by `app.py`.
 
-### 6. Grounded interview questions
-The pipeline produces 8 interview questions covering system design, technical details, behavioral scenarios, and project trade-offs. Each question includes an answer outline citing specific resume bullets.
-
-```json
-[
-  {
-    "id": 1,
-    "category": "System Architecture",
-    "question": "How do you handle sub-5ms latency across high-throughput edge nodes?",
-    "grounded_answer": "In my work at Zephyr Skyworks, I architected a distributed pipeline in Python and Go...",
-    "resume_evidence": "- Architected a distributed high-throughput telemetry ingestion pipeline in Python and Go..."
-  }
-]
-```
-
-### 7. One-page summary
-The pipeline creates an executive summary in Markdown with the alignment score, a requirements table, top bullet points, and verified skills.
-
-### 8. Employer and school entity audit scan
-Python scans all generated text (bullets, cover note, interview answers, and summary) for employer and educational institution names. Any entity not present in the raw resume text is flagged in the UI and stored in `audit_results.json`.
-
-## Storage layout
-
-Each generated packet is saved under a timestamped directory in `data/packets/`, and the latest output is mirrored to `data/cache/last_packet.json`:
-
-```
-data/
-├── cache/
-│   └── last_packet.json         # Mirrored latest packet for quick retrieval
-└── packets/
-    └── 20260919_233714/
-        ├── resume.txt               # Raw input resume text
-        ├── job_description.txt      # Raw target JD text
-        ├── resume_parsed.json       # Structured resume JSON
-        ├── jd_parsed.json           # Structured JD JSON
-        ├── match_matrix.json        # Requirements match matrix
-        ├── rewritten_bullets.json   # 6-10 grounded bullets
-        ├── cover_note.txt           # 250-400 word cover letter
-        ├── interview_qa.json        # 8 grounded interview Q&A
-        ├── summary.md               # One-page executive summary
-        ├── audit_results.json       # Grounding audit results
-        └── packet_manifest.json     # Packet metadata and counts
-```
-
-## Model integration
-
-The app connects to models through the `openai` Python package in `llm_client.py`:
-
-1. **Agnes AI (default):** Uses `agnes-3.0-flash` at `https://apihub.agnes-ai.com/v1` with the `AGNESAI_API_KEY` environment variable.
-2. **OpenAI (optional):** Uses `gpt-5.6-luna` or `gpt-5.6-terra`. Requires `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
-3. **Google Gemini (optional):** Uses `gemini-3.5-flash-lite` or `gemini-3.7-flash` via Google's OpenAI-compatible endpoint. Requires `GOOGLE_API_KEY`.
-
-If a provider's key is missing from the environment, the app hides that provider from the user interface.
+`llm_client.py`, `pipeline.py`, and the persistence helpers in
+`document_utils.py` remain as legacy compatibility code. They are not called by
+the current Streamlit workflow, and their older smoke scripts do not describe
+the current fixture contract. See the [Developer guide](DEVELOPER_GUIDE.md) for
+the supported verification commands.
